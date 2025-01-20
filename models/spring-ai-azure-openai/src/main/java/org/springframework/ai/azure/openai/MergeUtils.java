@@ -1,11 +1,11 @@
 /*
- * Copyright 2023 - 2024 the original author or authors.
+ * Copyright 2023-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * https://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springframework.ai.azure.openai;
 
 import java.lang.reflect.Constructor;
@@ -24,10 +25,12 @@ import java.util.Objects;
 
 import com.azure.ai.openai.models.AzureChatExtensionsMessageContext;
 import com.azure.ai.openai.models.ChatChoice;
+import com.azure.ai.openai.models.ChatChoiceLogProbabilityInfo;
 import com.azure.ai.openai.models.ChatCompletions;
 import com.azure.ai.openai.models.ChatCompletionsFunctionToolCall;
 import com.azure.ai.openai.models.ChatCompletionsToolCall;
 import com.azure.ai.openai.models.ChatResponseMessage;
+import com.azure.ai.openai.models.ChatRole;
 import com.azure.ai.openai.models.CompletionsFinishReason;
 import com.azure.ai.openai.models.CompletionsUsage;
 import com.azure.ai.openai.models.ContentFilterResultsForChoice;
@@ -45,33 +48,35 @@ import org.springframework.util.CollectionUtils;
  * @author Christian Tzolov
  * @since 1.0.0
  */
-public class MergeUtils {
+public final class MergeUtils {
 
-	/**
-	 * Create a new instance of the given class. Can be used to create instances with
-	 * private constructors.
-	 * @param <T> the type of the class to be created.
-	 * @param clazz the class to create an instance of.
-	 * @param args the arguments to pass to the constructor.
-	 * @return a new instance of the given class.
-	 */
-	private static <T> T newInstance(Class<T> clazz, Object... args) {
-		return newInstance(0, clazz, args);
+	private static final Class<?>[] CHAT_COMPLETIONS_CONSTRUCTOR_ARG_TYPES = new Class<?>[] { String.class,
+			OffsetDateTime.class, List.class, CompletionsUsage.class };
+
+	private static final Class<?>[] chatChoiceConstructorArgumentTypes = new Class<?>[] {
+			ChatChoiceLogProbabilityInfo.class, int.class, CompletionsFinishReason.class };
+
+	private static final Class<?>[] chatResponseMessageConstructorArgumentTypes = new Class<?>[] { ChatRole.class,
+			String.class, String.class };
+
+	private MergeUtils() {
+
 	}
 
 	/**
 	 * Create a new instance of the given class using the constructor at the given index.
 	 * Can be used to create instances with private constructors.
 	 * @param <T> the type of the class to be created.
-	 * @param index the index of the constructor to use.
+	 * @param argumentTypes the list of constructor argument types. Used to select the
+	 * right constructor.
 	 * @param clazz the class to create an instance of.
 	 * @param args the arguments to pass to the constructor.
 	 * @return a new instance of the given class.
 	 */
-	private static <T> T newInstance(int index, Class<T> clazz, Object... args) {
+	private static <T> T newInstance(Class<?>[] argumentTypes, Class<T> clazz, Object... args) {
 		try {
 			@SuppressWarnings("unchecked")
-			Constructor<T> constructor = (Constructor<T>) clazz.getDeclaredConstructors()[index];
+			Constructor<T> constructor = (Constructor<T>) clazz.getDeclaredConstructor(argumentTypes);
 			constructor.setAccessible(true);
 			return constructor.newInstance(args);
 		}
@@ -104,8 +109,9 @@ public class MergeUtils {
 		String id = null;
 		List<ChatChoice> choices = new ArrayList<>();
 		CompletionsUsage usage = null;
-		long createdAt = 0;
-		ChatCompletions chatCompletionsInstance = newInstance(ChatCompletions.class, id, createdAt, choices, usage);
+		OffsetDateTime createdAt = OffsetDateTime.now();
+		ChatCompletions chatCompletionsInstance = newInstance(CHAT_COMPLETIONS_CONSTRUCTOR_ARG_TYPES,
+				ChatCompletions.class, id, createdAt, choices, usage);
 		List<ContentFilterResultsForPrompt> promptFilterResults = new ArrayList<>();
 		setField(chatCompletionsInstance, "promptFilterResults", promptFilterResults);
 		String systemFingerprint = null;
@@ -150,7 +156,8 @@ public class MergeUtils {
 		OffsetDateTime createdAt = left.getCreatedAt().isAfter(right.getCreatedAt()) ? left.getCreatedAt()
 				: right.getCreatedAt();
 
-		ChatCompletions instance = newInstance(1, ChatCompletions.class, id, createdAt, choices, usage);
+		ChatCompletions instance = newInstance(CHAT_COMPLETIONS_CONSTRUCTOR_ARG_TYPES, ChatCompletions.class, id,
+				createdAt, choices, usage);
 
 		List<ContentFilterResultsForPrompt> promptFilterResults = right.getPromptFilterResults() == null
 				? left.getPromptFilterResults() : right.getPromptFilterResults();
@@ -177,7 +184,8 @@ public class MergeUtils {
 
 		var logprobs = left.getLogprobs() != null ? left.getLogprobs() : right.getLogprobs();
 
-		final ChatChoice instance = newInstance(ChatChoice.class, logprobs, index, finishReason);
+		final ChatChoice instance = newInstance(chatChoiceConstructorArgumentTypes, ChatChoice.class, logprobs, index,
+				finishReason);
 
 		ChatResponseMessage message = null;
 		if (left.getMessage() == null) {
@@ -201,9 +209,6 @@ public class MergeUtils {
 		ContentFilterResultsForChoice contentFilterResults = left.getContentFilterResults() != null
 				? left.getContentFilterResults() : right.getContentFilterResults();
 		setField(instance, "contentFilterResults", contentFilterResults);
-
-		var finishDetails = left.getFinishDetails() != null ? left.getFinishDetails() : right.getFinishDetails();
-		setField(instance, "finishDetails", finishDetails);
 
 		var enhancements = left.getEnhancements() != null ? left.getEnhancements() : right.getEnhancements();
 		setField(instance, "enhancements", enhancements);
@@ -231,7 +236,10 @@ public class MergeUtils {
 			content = left.getContent();
 		}
 
-		ChatResponseMessage instance = newInstance(ChatResponseMessage.class, role, content);
+		String refusal = left.getRefusal() != null ? left.getRefusal() : right.getRefusal();
+
+		ChatResponseMessage instance = newInstance(chatResponseMessageConstructorArgumentTypes,
+				ChatResponseMessage.class, role, refusal, content);
 
 		List<ChatCompletionsToolCall> toolCalls = new ArrayList<>();
 		if (left.getToolCalls() == null) {

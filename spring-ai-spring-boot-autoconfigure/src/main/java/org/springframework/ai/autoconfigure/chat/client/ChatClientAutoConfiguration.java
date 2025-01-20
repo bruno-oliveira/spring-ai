@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2024 the original author or authors.
+ * Copyright 2023-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,15 @@
 
 package org.springframework.ai.autoconfigure.chat.client;
 
+import io.micrometer.observation.ObservationRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.client.ChatClientCustomizer;
+import org.springframework.ai.chat.client.observation.ChatClientInputContentObservationFilter;
+import org.springframework.ai.chat.client.observation.ChatClientObservationConvention;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -40,7 +46,8 @@ import org.springframework.context.annotation.Scope;
  * @author Mark Pollack
  * @author Josh Long
  * @author Arjen Poutsma
- * @since 1.0.0 M1
+ * @author Thomas Vitale
+ * @since 1.0.0
  */
 @AutoConfiguration
 @ConditionalOnClass(ChatClient.class)
@@ -48,6 +55,8 @@ import org.springframework.context.annotation.Scope;
 @ConditionalOnProperty(prefix = ChatClientBuilderProperties.CONFIG_PREFIX, name = "enabled", havingValue = "true",
 		matchIfMissing = true)
 public class ChatClientAutoConfiguration {
+
+	private static final Logger logger = LoggerFactory.getLogger(ChatClientAutoConfiguration.class);
 
 	@Bean
 	@ConditionalOnMissingBean
@@ -60,9 +69,24 @@ public class ChatClientAutoConfiguration {
 	@Bean
 	@Scope("prototype")
 	@ConditionalOnMissingBean
-	ChatClient.Builder chatClientBuilder(ChatClientBuilderConfigurer chatClientBuilderConfigurer, ChatModel chatModel) {
-		ChatClient.Builder builder = ChatClient.builder(chatModel);
+	ChatClient.Builder chatClientBuilder(ChatClientBuilderConfigurer chatClientBuilderConfigurer, ChatModel chatModel,
+			ObjectProvider<ObservationRegistry> observationRegistry,
+			ObjectProvider<ChatClientObservationConvention> observationConvention) {
+
+		ChatClient.Builder builder = ChatClient.builder(chatModel,
+				observationRegistry.getIfUnique(() -> ObservationRegistry.NOOP),
+				observationConvention.getIfUnique(() -> null));
 		return chatClientBuilderConfigurer.configure(builder);
+	}
+
+	@Bean
+	@ConditionalOnMissingBean
+	@ConditionalOnProperty(prefix = ChatClientBuilderProperties.CONFIG_PREFIX + ".observations", name = "include-input",
+			havingValue = "true")
+	ChatClientInputContentObservationFilter chatClientInputContentObservationFilter() {
+		logger.warn(
+				"You have enabled the inclusion of the input content in the observations, with the risk of exposing sensitive or private information. Please, be careful!");
+		return new ChatClientInputContentObservationFilter();
 	}
 
 }

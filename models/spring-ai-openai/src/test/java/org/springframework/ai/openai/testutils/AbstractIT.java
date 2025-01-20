@@ -1,11 +1,11 @@
 /*
- * Copyright 2023 - 2024 the original author or authors.
+ * Copyright 2023-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * https://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springframework.ai.openai.testutils;
 
 import java.util.List;
@@ -21,16 +22,19 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.StreamingChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
-import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.image.ImageModel;
 import org.springframework.ai.openai.OpenAiAudioSpeechModel;
 import org.springframework.ai.openai.OpenAiAudioTranscriptionModel;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiModerationModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -49,6 +53,9 @@ public abstract class AbstractIT {
 	protected StreamingChatModel streamingChatModel;
 
 	@Autowired
+	protected OpenAiChatModel openAiChatModel;
+
+	@Autowired
 	protected OpenAiAudioTranscriptionModel transcriptionModel;
 
 	@Autowired
@@ -56,6 +63,12 @@ public abstract class AbstractIT {
 
 	@Autowired
 	protected ImageModel imageModel;
+
+	@Autowired
+	protected EmbeddingModel embeddingModel;
+
+	@Autowired
+	protected OpenAiModerationModel openAiModerationModel;
 
 	@Value("classpath:/prompts/eval/qa-evaluator-accurate-answer.st")
 	protected Resource qaEvaluatorAccurateAnswerResource;
@@ -71,26 +84,26 @@ public abstract class AbstractIT {
 
 	protected void evaluateQuestionAndAnswer(String question, ChatResponse response, boolean factBased) {
 		assertThat(response).isNotNull();
-		String answer = response.getResult().getOutput().getContent();
+		String answer = response.getResult().getOutput().getText();
 		logger.info("Question: " + question);
 		logger.info("Answer:" + answer);
-		PromptTemplate userPromptTemplate = new PromptTemplate(userEvaluatorResource,
+		PromptTemplate userPromptTemplate = new PromptTemplate(this.userEvaluatorResource,
 				Map.of("question", question, "answer", answer));
 		SystemMessage systemMessage;
 		if (factBased) {
-			systemMessage = new SystemMessage(qaEvaluatorFactBasedAnswerResource);
+			systemMessage = new SystemMessage(this.qaEvaluatorFactBasedAnswerResource);
 		}
 		else {
-			systemMessage = new SystemMessage(qaEvaluatorAccurateAnswerResource);
+			systemMessage = new SystemMessage(this.qaEvaluatorAccurateAnswerResource);
 		}
 		Message userMessage = userPromptTemplate.createMessage();
 		Prompt prompt = new Prompt(List.of(userMessage, systemMessage));
-		String yesOrNo = chatModel.call(prompt).getResult().getOutput().getContent();
+		String yesOrNo = this.chatModel.call(prompt).getResult().getOutput().getText();
 		logger.info("Is Answer related to question: " + yesOrNo);
 		if (yesOrNo.equalsIgnoreCase("no")) {
-			SystemMessage notRelatedSystemMessage = new SystemMessage(qaEvaluatorNotRelatedResource);
+			SystemMessage notRelatedSystemMessage = new SystemMessage(this.qaEvaluatorNotRelatedResource);
 			prompt = new Prompt(List.of(userMessage, notRelatedSystemMessage));
-			String reasonForFailure = chatModel.call(prompt).getResult().getOutput().getContent();
+			String reasonForFailure = this.chatModel.call(prompt).getResult().getOutput().getText();
 			fail(reasonForFailure);
 		}
 		else {

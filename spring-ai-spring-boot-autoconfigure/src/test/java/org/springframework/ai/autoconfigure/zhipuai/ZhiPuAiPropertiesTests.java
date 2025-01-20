@@ -1,11 +1,11 @@
 /*
- * Copyright 2023 - 2024 the original author or authors.
+ * Copyright 2023-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * https://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,11 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springframework.ai.autoconfigure.zhipuai;
 
 import org.junit.jupiter.api.Test;
 import org.skyscreamer.jsonassert.JSONAssert;
 import org.skyscreamer.jsonassert.JSONCompareMode;
+
 import org.springframework.ai.autoconfigure.retry.SpringAiRetryAutoConfiguration;
 import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.ai.zhipuai.ZhiPuAiChatModel;
@@ -61,7 +63,7 @@ public class ZhiPuAiPropertiesTests {
 				assertThat(chatProperties.getBaseUrl()).isNull();
 
 				assertThat(chatProperties.getOptions().getModel()).isEqualTo("MODEL_XYZ");
-				assertThat(chatProperties.getOptions().getTemperature()).isEqualTo(0.55f);
+				assertThat(chatProperties.getOptions().getTemperature()).isEqualTo(0.55);
 			});
 	}
 
@@ -90,7 +92,7 @@ public class ZhiPuAiPropertiesTests {
 				assertThat(chatProperties.getBaseUrl()).isEqualTo("TEST_BASE_URL2");
 
 				assertThat(chatProperties.getOptions().getModel()).isEqualTo("MODEL_XYZ");
-				assertThat(chatProperties.getOptions().getTemperature()).isEqualTo(0.55f);
+				assertThat(chatProperties.getOptions().getTemperature()).isEqualTo(0.55);
 			});
 	}
 
@@ -205,19 +207,15 @@ public class ZhiPuAiPropertiesTests {
 				"spring.ai.zhipuai.base-url=TEST_BASE_URL",
 
 				"spring.ai.zhipuai.chat.options.model=MODEL_XYZ",
-				"spring.ai.zhipuai.chat.options.frequencyPenalty=-1.5",
-				"spring.ai.zhipuai.chat.options.logitBias.myTokenId=-5",
 				"spring.ai.zhipuai.chat.options.maxTokens=123",
-				"spring.ai.zhipuai.chat.options.n=10",
-				"spring.ai.zhipuai.chat.options.presencePenalty=0",
-				"spring.ai.zhipuai.chat.options.responseFormat.type=json",
-				"spring.ai.zhipuai.chat.options.seed=66",
 				"spring.ai.zhipuai.chat.options.stop=boza,koza",
 				"spring.ai.zhipuai.chat.options.temperature=0.55",
 				"spring.ai.zhipuai.chat.options.topP=0.56",
+				"spring.ai.zhipuai.chat.options.requestId=RequestId",
+				"spring.ai.zhipuai.chat.options.doSample=true",
 
 				// "spring.ai.zhipuai.chat.options.toolChoice.functionName=toolChoiceFunctionName",
-				"spring.ai.zhipuai.chat.options.toolChoice=" + ModelOptionsUtils.toJsonString(ZhiPuAiApi.ChatCompletionRequest.ToolChoiceBuilder.FUNCTION("toolChoiceFunctionName")),
+				"spring.ai.zhipuai.chat.options.toolChoice=" + ModelOptionsUtils.toJsonString(ZhiPuAiApi.ChatCompletionRequest.ToolChoiceBuilder.function("toolChoiceFunctionName")),
 
 				"spring.ai.zhipuai.chat.options.tools[0].function.name=myFunction1",
 				"spring.ai.zhipuai.chat.options.tools[0].function.description=function description",
@@ -261,16 +259,12 @@ public class ZhiPuAiPropertiesTests {
 				assertThat(embeddingProperties.getOptions().getModel()).isEqualTo("Embedding-2");
 
 				assertThat(chatProperties.getOptions().getModel()).isEqualTo("MODEL_XYZ");
-				assertThat(chatProperties.getOptions().getFrequencyPenalty()).isEqualTo(-1.5f);
 				assertThat(chatProperties.getOptions().getMaxTokens()).isEqualTo(123);
-				assertThat(chatProperties.getOptions().getN()).isEqualTo(10);
-				assertThat(chatProperties.getOptions().getPresencePenalty()).isEqualTo(0);
-				assertThat(chatProperties.getOptions().getResponseFormat())
-					.isEqualTo(new ZhiPuAiApi.ChatCompletionRequest.ResponseFormat("json"));
-				assertThat(chatProperties.getOptions().getSeed()).isEqualTo(66);
 				assertThat(chatProperties.getOptions().getStop()).contains("boza", "koza");
-				assertThat(chatProperties.getOptions().getTemperature()).isEqualTo(0.55f);
-				assertThat(chatProperties.getOptions().getTopP()).isEqualTo(0.56f);
+				assertThat(chatProperties.getOptions().getTemperature()).isEqualTo(0.55);
+				assertThat(chatProperties.getOptions().getTopP()).isEqualTo(0.56);
+				assertThat(chatProperties.getOptions().getRequestId()).isEqualTo("RequestId");
+				assertThat(chatProperties.getOptions().getDoSample()).isEqualTo(Boolean.TRUE);
 
 				JSONAssert.assertEquals("{\"type\":\"function\",\"function\":{\"name\":\"toolChoiceFunctionName\"}}",
 						chatProperties.getOptions().getToolChoice(), JSONCompareMode.LENIENT);
@@ -279,11 +273,11 @@ public class ZhiPuAiPropertiesTests {
 
 				assertThat(chatProperties.getOptions().getTools()).hasSize(1);
 				var tool = chatProperties.getOptions().getTools().get(0);
-				assertThat(tool.type()).isEqualTo(ZhiPuAiApi.FunctionTool.Type.FUNCTION);
-				var function = tool.function();
-				assertThat(function.name()).isEqualTo("myFunction1");
-				assertThat(function.description()).isEqualTo("function description");
-				assertThat(function.parameters()).isNotEmpty();
+				assertThat(tool.getType()).isEqualTo(ZhiPuAiApi.FunctionTool.Type.FUNCTION);
+				var function = tool.getFunction();
+				assertThat(function.getName()).isEqualTo("myFunction1");
+				assertThat(function.getDescription()).isEqualTo("function description");
+				assertThat(function.getParameters()).isNotEmpty();
 			});
 	}
 

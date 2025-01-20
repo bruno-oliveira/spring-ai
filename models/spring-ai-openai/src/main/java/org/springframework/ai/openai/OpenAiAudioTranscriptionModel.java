@@ -1,11 +1,11 @@
 /*
- * Copyright 2023 - 2024 the original author or authors.
+ * Copyright 2023-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * https://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,34 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/*
-* Copyright 2024-2024 the original author or authors.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*      https://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
 
 package org.springframework.ai.openai;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.springframework.ai.audio.transcription.AudioTranscription;
+import org.springframework.ai.audio.transcription.AudioTranscriptionPrompt;
+import org.springframework.ai.audio.transcription.AudioTranscriptionResponse;
 import org.springframework.ai.chat.metadata.RateLimit;
 import org.springframework.ai.model.Model;
 import org.springframework.ai.openai.api.OpenAiAudioApi;
 import org.springframework.ai.openai.api.OpenAiAudioApi.StructuredResponse;
-import org.springframework.ai.openai.audio.transcription.AudioTranscription;
-import org.springframework.ai.openai.audio.transcription.AudioTranscriptionPrompt;
-import org.springframework.ai.openai.audio.transcription.AudioTranscriptionResponse;
 import org.springframework.ai.openai.metadata.audio.OpenAiAudioTranscriptionResponseMetadata;
 import org.springframework.ai.openai.metadata.support.OpenAiResponseHeaderExtractor;
 import org.springframework.ai.retry.RetryUtils;
@@ -56,6 +41,7 @@ import org.springframework.util.Assert;
  *
  * @author Michael Lavelle
  * @author Christian Tzolov
+ * @author Thomas Vitale
  * @see OpenAiAudioApi
  * @since 0.8.1
  */
@@ -65,7 +51,7 @@ public class OpenAiAudioTranscriptionModel implements Model<AudioTranscriptionPr
 
 	private final OpenAiAudioTranscriptionOptions defaultOptions;
 
-	public final RetryTemplate retryTemplate;
+	private final RetryTemplate retryTemplate;
 
 	private final OpenAiAudioApi audioApi;
 
@@ -77,11 +63,10 @@ public class OpenAiAudioTranscriptionModel implements Model<AudioTranscriptionPr
 	public OpenAiAudioTranscriptionModel(OpenAiAudioApi audioApi) {
 		this(audioApi,
 				OpenAiAudioTranscriptionOptions.builder()
-					.withModel(OpenAiAudioApi.WhisperModel.WHISPER_1.getValue())
-					.withResponseFormat(OpenAiAudioApi.TranscriptResponseFormat.JSON)
-					.withTemperature(0.7f)
-					.build(),
-				RetryUtils.DEFAULT_RETRY_TEMPLATE);
+					.model(OpenAiAudioApi.WhisperModel.WHISPER_1.getValue())
+					.responseFormat(OpenAiAudioApi.TranscriptResponseFormat.JSON)
+					.temperature(0.7f)
+					.build());
 	}
 
 	/**
@@ -119,74 +104,71 @@ public class OpenAiAudioTranscriptionModel implements Model<AudioTranscriptionPr
 	}
 
 	@Override
-	public AudioTranscriptionResponse call(AudioTranscriptionPrompt request) {
+	public AudioTranscriptionResponse call(AudioTranscriptionPrompt transcriptionPrompt) {
 
-		return this.retryTemplate.execute(ctx -> {
+		Resource audioResource = transcriptionPrompt.getInstructions();
 
-			Resource audioResource = request.getInstructions();
+		OpenAiAudioApi.TranscriptionRequest request = createRequest(transcriptionPrompt);
 
-			OpenAiAudioApi.TranscriptionRequest requestBody = createRequestBody(request);
+		if (request.responseFormat().isJsonType()) {
 
-			if (requestBody.responseFormat().isJsonType()) {
+			ResponseEntity<StructuredResponse> transcriptionEntity = this.retryTemplate
+				.execute(ctx -> this.audioApi.createTranscription(request, StructuredResponse.class));
 
-				ResponseEntity<StructuredResponse> transcriptionEntity = this.audioApi.createTranscription(requestBody,
-						StructuredResponse.class);
+			var transcription = transcriptionEntity.getBody();
 
-				var transcription = transcriptionEntity.getBody();
-
-				if (transcription == null) {
-					logger.warn("No transcription returned for request: {}", audioResource);
-					return new AudioTranscriptionResponse(null);
-				}
-
-				AudioTranscription transcript = new AudioTranscription(transcription.text());
-
-				RateLimit rateLimits = OpenAiResponseHeaderExtractor.extractAiResponseHeaders(transcriptionEntity);
-
-				return new AudioTranscriptionResponse(transcript,
-						OpenAiAudioTranscriptionResponseMetadata.from(transcriptionEntity.getBody())
-							.withRateLimit(rateLimits));
-
+			if (transcription == null) {
+				logger.warn("No transcription returned for request: {}", audioResource);
+				return new AudioTranscriptionResponse(null);
 			}
-			else {
 
-				ResponseEntity<String> transcriptionEntity = this.audioApi.createTranscription(requestBody,
-						String.class);
+			AudioTranscription transcript = new AudioTranscription(transcription.text());
 
-				var transcription = transcriptionEntity.getBody();
+			RateLimit rateLimits = OpenAiResponseHeaderExtractor.extractAiResponseHeaders(transcriptionEntity);
 
-				if (transcription == null) {
-					logger.warn("No transcription returned for request: {}", audioResource);
-					return new AudioTranscriptionResponse(null);
-				}
+			return new AudioTranscriptionResponse(transcript,
+					OpenAiAudioTranscriptionResponseMetadata.from(transcriptionEntity.getBody())
+						.withRateLimit(rateLimits));
 
-				AudioTranscription transcript = new AudioTranscription(transcription);
+		}
+		else {
 
-				RateLimit rateLimits = OpenAiResponseHeaderExtractor.extractAiResponseHeaders(transcriptionEntity);
+			ResponseEntity<String> transcriptionEntity = this.retryTemplate
+				.execute(ctx -> this.audioApi.createTranscription(request, String.class));
 
-				return new AudioTranscriptionResponse(transcript,
-						OpenAiAudioTranscriptionResponseMetadata.from(transcriptionEntity.getBody())
-							.withRateLimit(rateLimits));
+			var transcription = transcriptionEntity.getBody();
+
+			if (transcription == null) {
+				logger.warn("No transcription returned for request: {}", audioResource);
+				return new AudioTranscriptionResponse(null);
 			}
-		});
+
+			AudioTranscription transcript = new AudioTranscription(transcription);
+
+			RateLimit rateLimits = OpenAiResponseHeaderExtractor.extractAiResponseHeaders(transcriptionEntity);
+
+			return new AudioTranscriptionResponse(transcript,
+					OpenAiAudioTranscriptionResponseMetadata.from(transcriptionEntity.getBody())
+						.withRateLimit(rateLimits));
+		}
 	}
 
-	OpenAiAudioApi.TranscriptionRequest createRequestBody(AudioTranscriptionPrompt request) {
+	OpenAiAudioApi.TranscriptionRequest createRequest(AudioTranscriptionPrompt transcriptionPrompt) {
 
 		OpenAiAudioTranscriptionOptions options = this.defaultOptions;
 
-		if (request.getOptions() != null) {
-			if (request.getOptions() instanceof OpenAiAudioTranscriptionOptions runtimeOptions) {
+		if (transcriptionPrompt.getOptions() != null) {
+			if (transcriptionPrompt.getOptions() instanceof OpenAiAudioTranscriptionOptions runtimeOptions) {
 				options = this.merge(runtimeOptions, options);
 			}
 			else {
 				throw new IllegalArgumentException("Prompt options are not of type TranscriptionOptions: "
-						+ request.getOptions().getClass().getSimpleName());
+						+ transcriptionPrompt.getOptions().getClass().getSimpleName());
 			}
 		}
 
-		OpenAiAudioApi.TranscriptionRequest audioTranscriptionRequest = OpenAiAudioApi.TranscriptionRequest.builder()
-			.withFile(toBytes(request.getInstructions()))
+		return OpenAiAudioApi.TranscriptionRequest.builder()
+			.withFile(toBytes(transcriptionPrompt.getInstructions()))
 			.withResponseFormat(options.getResponseFormat())
 			.withPrompt(options.getPrompt())
 			.withTemperature(options.getTemperature())
@@ -194,8 +176,6 @@ public class OpenAiAudioTranscriptionModel implements Model<AudioTranscriptionPr
 			.withModel(options.getModel())
 			.withGranularityType(options.getGranularityType())
 			.build();
-
-		return audioTranscriptionRequest;
 	}
 
 	private byte[] toBytes(Resource resource) {

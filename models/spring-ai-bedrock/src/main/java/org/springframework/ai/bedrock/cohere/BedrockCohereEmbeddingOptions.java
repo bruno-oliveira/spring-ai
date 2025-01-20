@@ -1,11 +1,11 @@
 /*
- * Copyright 2023 - 2024 the original author or authors.
+ * Copyright 2023-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * https://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,8 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springframework.ai.bedrock.cohere;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -24,7 +26,11 @@ import org.springframework.ai.bedrock.cohere.api.CohereEmbeddingBedrockApi.Coher
 import org.springframework.ai.embedding.EmbeddingOptions;
 
 /**
+ * Options for the Bedrock Cohere embedding API.
+ *
  * @author Christian Tzolov
+ * @author Thomas Vitale
+ * @author Ilayaperumal Gopinathan
  */
 @JsonInclude(Include.NON_NULL)
 public class BedrockCohereEmbeddingOptions implements EmbeddingOptions {
@@ -50,26 +56,6 @@ public class BedrockCohereEmbeddingOptions implements EmbeddingOptions {
 		return new Builder();
 	}
 
-	public static class Builder {
-
-		private BedrockCohereEmbeddingOptions options = new BedrockCohereEmbeddingOptions();
-
-		public Builder withInputType(InputType inputType) {
-			this.options.setInputType(inputType);
-			return this;
-		}
-
-		public Builder withTruncate(Truncate truncate) {
-			this.options.setTruncate(truncate);
-			return this;
-		}
-
-		public BedrockCohereEmbeddingOptions build() {
-			return this.options;
-		}
-
-	}
-
 	public InputType getInputType() {
 		return this.inputType;
 	}
@@ -84,6 +70,38 @@ public class BedrockCohereEmbeddingOptions implements EmbeddingOptions {
 
 	public void setTruncate(Truncate truncate) {
 		this.truncate = truncate;
+	}
+
+	@Override
+	@JsonIgnore
+	public String getModel() {
+		return null;
+	}
+
+	@Override
+	@JsonIgnore
+	public Integer getDimensions() {
+		return null;
+	}
+
+	public static class Builder {
+
+		private BedrockCohereEmbeddingOptions options = new BedrockCohereEmbeddingOptions();
+
+		public Builder inputType(InputType inputType) {
+			this.options.setInputType(inputType);
+			return this;
+		}
+
+		public Builder truncate(Truncate truncate) {
+			this.options.setTruncate(truncate);
+			return this;
+		}
+
+		public BedrockCohereEmbeddingOptions build() {
+			return this.options;
+		}
+
 	}
 
 }

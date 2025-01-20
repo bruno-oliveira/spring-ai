@@ -26,7 +26,7 @@ To help with dependency management, Spring AI provides a BOM (bill of materials)
 
 == Auto-configuration
 
-Spring AI provides Spring Boot auto-configuration for the Azure MiniMax Embedding Client.
+Spring AI provides Spring Boot auto-configuration for the Azure MiniMax Embedding Model.
 To enable it add the following dependency to your project's Maven `pom.xml` file:
 
 [source, xml]
@@ -52,9 +52,9 @@ TIP: Refer to the xref:getting-started.adoc#dependency-management[Dependency Man
 
 ==== Retry Properties
 
-The prefix `spring.ai.retry` is used as the property prefix that lets you configure the retry mechanism for the MiniMax Embedding client.
+The prefix `spring.ai.retry` is used as the property prefix that lets you configure the retry mechanism for the MiniMax Embedding model.
 
-[cols="3,5,1"]
+[cols="3,5,1", stripes=even]
 |====
 | Property | Description | Default
 
@@ -71,7 +71,7 @@ The prefix `spring.ai.retry` is used as the property prefix that lets you config
 
 The prefix `spring.ai.minimax` is used as the property prefix that lets you connect to MiniMax.
 
-[cols="3,5,1"]
+[cols="3,5,1", stripes=even]
 |====
 | Property | Description | Default
 
@@ -83,7 +83,7 @@ The prefix `spring.ai.minimax` is used as the property prefix that lets you conn
 
 The prefix `spring.ai.minimax.embedding` is property prefix that configures the `EmbeddingModel` implementation for MiniMax.
 
-[cols="3,5,1"]
+[cols="3,5,1", stripes=even]
 |====
 | Property | Description | Default
 
@@ -95,7 +95,7 @@ The prefix `spring.ai.minimax.embedding` is property prefix that configures the 
 
 NOTE: You can override the common `spring.ai.minimax.base-url` and `spring.ai.minimax.api-key` for the `ChatModel` and `EmbeddingModel` implementations.
 The `spring.ai.minimax.embedding.base-url` and `spring.ai.minimax.embedding.api-key` properties if set take precedence over the common properties.
-Similarly, the `spring.ai.minimax.embedding.base-url` and `spring.ai.minimax.embedding.api-key` properties if set take precedence over the common properties.
+Similarly, the `spring.ai.minimax.chat.base-url` and `spring.ai.minimax.chat.api-key` properties if set take precedence over the common properties.
 This is useful if you want to use different MiniMax accounts for different models and different model endpoints.
 
 TIP: All properties prefixed with `spring.ai.minimax.embedding.options` can be overridden at runtime by adding a request specific <<embedding-options>> to the `EmbeddingRequest` call.
@@ -116,7 +116,7 @@ For example to override the default model name for a specific request:
 EmbeddingResponse embeddingResponse = embeddingModel.call(
     new EmbeddingRequest(List.of("Hello World", "World is big and salvation is near"),
         MiniMaxEmbeddingOptions.builder()
-            .withModel("Different-Embedding-Model-Deployment-Name")
+            .model("Different-Embedding-Model-Deployment-Name")
         .build()));
 ----
 
@@ -153,7 +153,7 @@ public class EmbeddingController {
 
 == Manual Configuration
 
-If you are not using Spring Boot, you can manually configure the MiniMax Embedding Client.
+If you are not using Spring Boot, you can manually configure the MiniMax Embedding Model.
 For this add the `spring-ai-minimax` dependency to your project's Maven `pom.xml` file:
 [source, xml]
 ----
@@ -183,12 +183,10 @@ Next, create an `MiniMaxEmbeddingModel` instance and use it to compute the simil
 ----
 var miniMaxApi = new MiniMaxApi(System.getenv("MINIMAX_API_KEY"));
 
-var embeddingModel = new MiniMaxEmbeddingModel(miniMaxApi)
-    .withDefaultOptions(MiniMaxChatOptions.build()
-        .withModel("embo-01")
-        .build());
+var embeddingModel = new MiniMaxEmbeddingModel(minimaxApi, MetadataMode.EMBED,
+MiniMaxEmbeddingOptions.builder().model("embo-01").build());
 
-EmbeddingResponse embeddingResponse = embeddingModel
+EmbeddingResponse embeddingResponse = this.embeddingModel
 	.embedForResponse(List.of("Hello World", "World is big and salvation is near"));
 ----
 

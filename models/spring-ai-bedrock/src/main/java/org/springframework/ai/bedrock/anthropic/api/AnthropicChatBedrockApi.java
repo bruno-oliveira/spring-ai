@@ -1,11 +1,11 @@
 /*
- * Copyright 2023 - 2024 the original author or authors.
+ * Copyright 2023-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * https://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springframework.ai.bedrock.anthropic.api;
 
 import java.time.Duration;
@@ -29,12 +30,16 @@ import software.amazon.awssdk.regions.Region;
 import org.springframework.ai.bedrock.anthropic.api.AnthropicChatBedrockApi.AnthropicChatRequest;
 import org.springframework.ai.bedrock.anthropic.api.AnthropicChatBedrockApi.AnthropicChatResponse;
 import org.springframework.ai.bedrock.api.AbstractBedrockApi;
-import org.springframework.ai.model.ModelDescription;
+import org.springframework.ai.model.ChatModelDescription;
 import org.springframework.util.Assert;
 
 /**
+ * Anthropic Chat API.
+ *
  * @author Christian Tzolov
+ * @author Thomas Vitale
  * @author Wei Jiang
+ * @author Ilayaperumal Gopinathan
  * @since 0.8.0
  */
 // @formatter:off
@@ -117,6 +122,54 @@ public class AnthropicChatBedrockApi extends
 
 	// Anthropic Claude models: https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-claude.html
 
+	@Override
+	public AnthropicChatResponse chatCompletion(AnthropicChatRequest anthropicRequest) {
+		Assert.notNull(anthropicRequest, "'anthropicRequest' must not be null");
+		return this.internalInvocation(anthropicRequest, AnthropicChatResponse.class);
+	}
+
+	@Override
+	public Flux<AnthropicChatResponse> chatCompletionStream(AnthropicChatRequest anthropicRequest) {
+		Assert.notNull(anthropicRequest, "'anthropicRequest' must not be null");
+		return this.internalInvocationStream(anthropicRequest, AnthropicChatResponse.class);
+	}
+
+	/**
+	 * Anthropic models version.
+	 */
+	public enum AnthropicChatModel implements ChatModelDescription {
+		/**
+		 * anthropic.claude-instant-v1
+		 */
+		CLAUDE_INSTANT_V1("anthropic.claude-instant-v1"),
+		/**
+		 * anthropic.claude-v2
+		 */
+		CLAUDE_V2("anthropic.claude-v2"),
+		/**
+		 * anthropic.claude-v2:1
+		 */
+		CLAUDE_V21("anthropic.claude-v2:1");
+
+		private final String id;
+
+		AnthropicChatModel(String value) {
+			this.id = value;
+		}
+
+		/**
+		 * @return The model id.
+		 */
+		public String id() {
+			return this.id;
+		}
+
+		@Override
+		public String getName() {
+			return this.id;
+		}
+	}
+
 	/**
 	 * AnthropicChatRequest encapsulates the request parameters for the Anthropic chat model.
 	 * https://docs.anthropic.com/claude/reference/complete_post
@@ -139,10 +192,10 @@ public class AnthropicChatBedrockApi extends
 	@JsonInclude(Include.NON_NULL)
 	public record AnthropicChatRequest(
 			@JsonProperty("prompt") String prompt,
-			@JsonProperty("temperature") Float temperature,
+			@JsonProperty("temperature") Double temperature,
 			@JsonProperty("max_tokens_to_sample") Integer maxTokensToSample,
 			@JsonProperty("top_k") Integer topK,
-			@JsonProperty("top_p") Float topP,
+			@JsonProperty("top_p") Double topP,
 			@JsonProperty("stop_sequences") List<String> stopSequences,
 			@JsonProperty("anthropic_version") String anthropicVersion) {
 
@@ -150,12 +203,12 @@ public class AnthropicChatBedrockApi extends
 			return new Builder(prompt);
 		}
 
-		public static class Builder {
+		public static final class Builder {
 			private final String prompt;
-			private Float temperature;// = 0.7f;
-			private Integer maxTokensToSample;// = 500;
-			private Integer topK;// = 10;
-			private Float topP;
+			private Double temperature;	// = 0.7;
+			private Integer maxTokensToSample;	// = 500;
+			private Integer topK;	// = 10;
+			private Double topP;
 			private List<String> stopSequences;
 			private String anthropicVersion;
 
@@ -163,45 +216,45 @@ public class AnthropicChatBedrockApi extends
 				this.prompt = prompt;
 			}
 
-			public Builder withTemperature(Float temperature) {
+			public Builder temperature(Double temperature) {
 				this.temperature = temperature;
 				return this;
 			}
 
-			public Builder withMaxTokensToSample(Integer maxTokensToSample) {
+			public Builder maxTokensToSample(Integer maxTokensToSample) {
 				this.maxTokensToSample = maxTokensToSample;
 				return this;
 			}
 
-			public Builder withTopK(Integer topK) {
+			public Builder topK(Integer topK) {
 				this.topK = topK;
 				return this;
 			}
 
-			public Builder withTopP(Float tpoP) {
+			public Builder topP(Double tpoP) {
 				this.topP = tpoP;
 				return this;
 			}
 
-			public Builder withStopSequences(List<String> stopSequences) {
+			public Builder stopSequences(List<String> stopSequences) {
 				this.stopSequences = stopSequences;
 				return this;
 			}
 
-			public Builder withAnthropicVersion(String anthropicVersion) {
+			public Builder anthropicVersion(String anthropicVersion) {
 				this.anthropicVersion = anthropicVersion;
 				return this;
 			}
 
 			public AnthropicChatRequest build() {
 				return new AnthropicChatRequest(
-						prompt,
-						temperature,
-						maxTokensToSample,
-						topK,
-						topP,
-						stopSequences,
-						anthropicVersion
+						this.prompt,
+						this.temperature,
+						this.maxTokensToSample,
+						this.topK,
+						this.topP,
+						this.stopSequences,
+						this.anthropicVersion
 				);
 			}
 		}
@@ -210,6 +263,7 @@ public class AnthropicChatBedrockApi extends
 	/**
 	 * AnthropicChatResponse encapsulates the response parameters for the Anthropic chat model.
 	 *
+	 * @param type The type of the response.
 	 * @param completion The generated text.
 	 * @param stopReason The reason the model stopped generating text.
 	 * @param stop The stop sequence that caused the model to stop generating text.
@@ -217,58 +271,11 @@ public class AnthropicChatBedrockApi extends
 	 */
 	@JsonInclude(Include.NON_NULL)
 	public record AnthropicChatResponse(
+			@JsonProperty("type") String type,
 			@JsonProperty("completion") String completion,
 			@JsonProperty("stop_reason") String stopReason,
 			@JsonProperty("stop") String stop,
 			@JsonProperty("amazon-bedrock-invocationMetrics") AmazonBedrockInvocationMetrics amazonBedrockInvocationMetrics) {
-	}
-
-	/**
-	 * Anthropic models version.
-	 */
-	public enum AnthropicChatModel implements ModelDescription {
-		/**
-		 * anthropic.claude-instant-v1
-		 */
-		CLAUDE_INSTANT_V1("anthropic.claude-instant-v1"),
-		/**
-		 * anthropic.claude-v2
-		 */
-		CLAUDE_V2("anthropic.claude-v2"),
-		/**
-		 * anthropic.claude-v2:1
-		 */
-		CLAUDE_V21("anthropic.claude-v2:1");
-
-		private final String id;
-
-		/**
-		 * @return The model id.
-		 */
-		public String id() {
-			return id;
-		}
-
-		AnthropicChatModel(String value) {
-			this.id = value;
-		}
-
-		@Override
-		public String getModelName() {
-			return this.id;
-		}
-	}
-
-	@Override
-	public AnthropicChatResponse chatCompletion(AnthropicChatRequest anthropicRequest) {
-		Assert.notNull(anthropicRequest, "'anthropicRequest' must not be null");
-		return this.internalInvocation(anthropicRequest, AnthropicChatResponse.class);
-	}
-
-	@Override
-	public Flux<AnthropicChatResponse> chatCompletionStream(AnthropicChatRequest anthropicRequest) {
-		Assert.notNull(anthropicRequest, "'anthropicRequest' must not be null");
-		return this.internalInvocationStream(anthropicRequest, AnthropicChatResponse.class);
 	}
 
 }

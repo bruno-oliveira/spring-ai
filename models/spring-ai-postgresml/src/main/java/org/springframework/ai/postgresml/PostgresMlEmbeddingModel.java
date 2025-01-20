@@ -1,11 +1,11 @@
 /*
- * Copyright 2023 - 2024 the original author or authors.
+ * Copyright 2023-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * https://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springframework.ai.postgresml;
 
 import java.sql.Array;
@@ -22,14 +23,15 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.ai.chat.metadata.EmptyUsage;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.document.MetadataMode;
 import org.springframework.ai.embedding.AbstractEmbeddingModel;
 import org.springframework.ai.embedding.Embedding;
 import org.springframework.ai.embedding.EmbeddingOptions;
 import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.ai.embedding.EmbeddingResponseMetadata;
+import org.springframework.ai.model.EmbeddingUtils;
 import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -52,39 +54,18 @@ public class PostgresMlEmbeddingModel extends AbstractEmbeddingModel implements 
 
 	private final JdbcTemplate jdbcTemplate;
 
-	public enum VectorType {
-
-		PG_ARRAY("", null, (rs, i) -> {
-			Array embedding = rs.getArray("embedding");
-			return Arrays.stream((Float[]) embedding.getArray()).map(Float::doubleValue).toList();
-		}),
-
-		PG_VECTOR("::vector", "vector", (rs, i) -> {
-			String embedding = rs.getString("embedding");
-			return Arrays.stream((embedding.substring(1, embedding.length() - 1)
-				/* remove leading '[' and trailing ']' */.split(","))).map(Double::parseDouble).toList();
-		});
-
-		private final String cast;
-
-		private final String extensionName;
-
-		private final RowMapper<List<Double>> rowMapper;
-
-		VectorType(String cast, String extensionName, RowMapper<List<Double>> rowMapper) {
-			this.cast = cast;
-			this.extensionName = extensionName;
-			this.rowMapper = rowMapper;
-		}
-
-	}
+	private final boolean createExtension;
 
 	/**
 	 * a constructor
 	 * @param jdbcTemplate JdbcTemplate
 	 */
 	public PostgresMlEmbeddingModel(JdbcTemplate jdbcTemplate) {
-		this(jdbcTemplate, PostgresMlEmbeddingOptions.builder().build());
+		this(jdbcTemplate, PostgresMlEmbeddingOptions.builder().build(), false);
+	}
+
+	public PostgresMlEmbeddingModel(JdbcTemplate jdbcTemplate, PostgresMlEmbeddingOptions options) {
+		this(jdbcTemplate, options, false);
 	}
 
 	/**
@@ -92,7 +73,8 @@ public class PostgresMlEmbeddingModel extends AbstractEmbeddingModel implements 
 	 * @param jdbcTemplate JdbcTemplate to use to interact with the database.
 	 * @param options PostgresMlEmbeddingOptions to configure the client.
 	 */
-	public PostgresMlEmbeddingModel(JdbcTemplate jdbcTemplate, PostgresMlEmbeddingOptions options) {
+	public PostgresMlEmbeddingModel(JdbcTemplate jdbcTemplate, PostgresMlEmbeddingOptions options,
+			boolean createExtension) {
 		Assert.notNull(jdbcTemplate, "jdbc template must not be null.");
 		Assert.notNull(options, "options must not be null.");
 		Assert.notNull(options.getTransformer(), "transformer must not be null.");
@@ -102,68 +84,20 @@ public class PostgresMlEmbeddingModel extends AbstractEmbeddingModel implements 
 
 		this.jdbcTemplate = jdbcTemplate;
 		this.defaultOptions = options;
-	}
-
-	/**
-	 * a constructor
-	 * @param jdbcTemplate JdbcTemplate
-	 * @param transformer huggingface sentence-transformer name
-	 */
-	@Deprecated(since = "0.8.0", forRemoval = true)
-	public PostgresMlEmbeddingModel(JdbcTemplate jdbcTemplate, String transformer) {
-		this(jdbcTemplate, transformer, VectorType.PG_ARRAY);
-	}
-
-	/**
-	 * a constructor
-	 * @deprecated Use the constructor with {@link PostgresMlEmbeddingOptions} instead.
-	 * @param jdbcTemplate JdbcTemplate
-	 * @param transformer huggingface sentence-transformer name
-	 * @param vectorType vector type in PostgreSQL
-	 */
-	@Deprecated(since = "0.8.0", forRemoval = true)
-	public PostgresMlEmbeddingModel(JdbcTemplate jdbcTemplate, String transformer, VectorType vectorType) {
-		this(jdbcTemplate, transformer, vectorType, Map.of(), MetadataMode.EMBED);
-	}
-
-	/**
-	 * a constructor * @deprecated Use the constructor with
-	 * {@link PostgresMlEmbeddingOptions} instead.
-	 * @param jdbcTemplate JdbcTemplate
-	 * @param transformer huggingface sentence-transformer name
-	 * @param vectorType vector type in PostgreSQL
-	 * @param kwargs optional arguments
-	 */
-	@Deprecated(since = "0.8.0", forRemoval = true)
-	public PostgresMlEmbeddingModel(JdbcTemplate jdbcTemplate, String transformer, VectorType vectorType,
-			Map<String, Object> kwargs, MetadataMode metadataMode) {
-		Assert.notNull(jdbcTemplate, "jdbc template must not be null.");
-		Assert.notNull(transformer, "transformer must not be null.");
-		Assert.notNull(vectorType, "vectorType must not be null.");
-		Assert.notNull(kwargs, "kwargs must not be null.");
-		Assert.notNull(metadataMode, "metadataMode must not be null.");
-
-		this.jdbcTemplate = jdbcTemplate;
-
-		this.defaultOptions = PostgresMlEmbeddingOptions.builder()
-			.withTransformer(transformer)
-			.withVectorType(vectorType)
-			.withMetadataMode(metadataMode)
-			.withKwargs(ModelOptionsUtils.toJsonString(kwargs))
-			.build();
+		this.createExtension = createExtension;
 	}
 
 	@SuppressWarnings("null")
 	@Override
-	public List<Double> embed(String text) {
+	public float[] embed(String text) {
 		return this.jdbcTemplate.queryForObject(
 				"SELECT pgml.embed(?, ?, ?::JSONB)" + this.defaultOptions.getVectorType().cast + " AS embedding",
 				this.defaultOptions.getVectorType().rowMapper, this.defaultOptions.getTransformer(), text,
-				this.defaultOptions.getKwargs());
+				ModelOptionsUtils.toJsonString(this.defaultOptions.getKwargs()));
 	}
 
 	@Override
-	public List<Double> embed(Document document) {
+	public float[] embed(Document document) {
 		return this.embed(document.getFormattedContent(this.defaultOptions.getMetadataMode()));
 	}
 
@@ -174,7 +108,7 @@ public class PostgresMlEmbeddingModel extends AbstractEmbeddingModel implements 
 		final PostgresMlEmbeddingOptions optionsToUse = this.mergeOptions(request.getOptions());
 
 		List<Embedding> data = new ArrayList<>();
-		List<List<Double>> embed = List.of();
+		List<float[]> embed = List.of();
 
 		List<String> texts = request.getInstructions();
 		if (!CollectionUtils.isEmpty(texts)) {
@@ -186,7 +120,7 @@ public class PostgresMlEmbeddingModel extends AbstractEmbeddingModel implements 
 				preparedStatement.setArray(3, connection.createArrayOf("TEXT", texts.toArray(Object[]::new)));
 				return preparedStatement;
 			}, rs -> {
-				List<List<Double>> result = new ArrayList<>();
+				List<float[]> result = new ArrayList<>();
 				while (rs.next()) {
 					result.add(optionsToUse.getVectorType().rowMapper.mapRow(rs, -1));
 				}
@@ -200,11 +134,11 @@ public class PostgresMlEmbeddingModel extends AbstractEmbeddingModel implements 
 			}
 		}
 
-		var metadata = new EmbeddingResponseMetadata(
-				Map.of("transformer", optionsToUse.getTransformer(), "vector-type", optionsToUse.getVectorType().name(),
-						"kwargs", ModelOptionsUtils.toJsonString(optionsToUse.getKwargs())));
-
-		return new EmbeddingResponse(data, metadata);
+		Map<String, Object> embeddingMetadata = Map.of("transformer", optionsToUse.getTransformer(), "vector-type",
+				optionsToUse.getVectorType().name(), "kwargs",
+				ModelOptionsUtils.toJsonString(optionsToUse.getKwargs()));
+		var embeddingResponseMetadata = new EmbeddingResponseMetadata("unknown", new EmptyUsage(), embeddingMetadata);
+		return new EmbeddingResponse(data, embeddingResponseMetadata);
 	}
 
 	/**
@@ -217,7 +151,7 @@ public class PostgresMlEmbeddingModel extends AbstractEmbeddingModel implements 
 		PostgresMlEmbeddingOptions options = (this.defaultOptions != null) ? this.defaultOptions
 				: PostgresMlEmbeddingOptions.builder().build();
 
-		if (requestOptions != null && !EmbeddingOptions.EMPTY.equals(requestOptions)) {
+		if (requestOptions != null) {
 			options = ModelOptionsUtils.merge(requestOptions, options, PostgresMlEmbeddingOptions.class);
 		}
 
@@ -226,12 +160,42 @@ public class PostgresMlEmbeddingModel extends AbstractEmbeddingModel implements 
 
 	@Override
 	public void afterPropertiesSet() {
+		if (!this.createExtension) {
+			return;
+		}
 		this.jdbcTemplate.execute("CREATE EXTENSION IF NOT EXISTS pgml");
-		this.jdbcTemplate.execute("CREATE EXTENSION IF NOT EXISTS hstore");
 		if (StringUtils.hasText(this.defaultOptions.getVectorType().extensionName)) {
 			this.jdbcTemplate
 				.execute("CREATE EXTENSION IF NOT EXISTS " + this.defaultOptions.getVectorType().extensionName);
 		}
+	}
+
+	public enum VectorType {
+
+		PG_ARRAY("", null, (rs, i) -> {
+			Array embedding = rs.getArray("embedding");
+			return EmbeddingUtils.toPrimitive((Float[]) embedding.getArray());
+
+		}),
+
+		PG_VECTOR("::vector", "vector", (rs, i) -> {
+			String embedding = rs.getString("embedding");
+			return EmbeddingUtils.toPrimitive(Arrays.stream((embedding.substring(1, embedding.length() - 1)
+				/* remove leading '[' and trailing ']' */.split(","))).map(Float::parseFloat).toList());
+		});
+
+		private final String cast;
+
+		private final String extensionName;
+
+		private final RowMapper<float[]> rowMapper;
+
+		VectorType(String cast, String extensionName, RowMapper<float[]> rowMapper) {
+			this.cast = cast;
+			this.extensionName = extensionName;
+			this.rowMapper = rowMapper;
+		}
+
 	}
 
 }

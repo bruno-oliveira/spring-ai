@@ -1,11 +1,11 @@
 /*
- * Copyright 2023 - 2024 the original author or authors.
+ * Copyright 2023-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * https://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,23 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springframework.ai.ollama;
 
-import java.io.IOException;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.ollama.OllamaContainer;
 
+import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.ai.ollama.api.OllamaApi;
-import org.springframework.ai.ollama.api.OllamaApiIT;
+import org.springframework.ai.ollama.api.OllamaModel;
+import org.springframework.ai.ollama.api.OllamaOptions;
+import org.springframework.ai.ollama.management.ModelManagementOptions;
+import org.springframework.ai.ollama.management.OllamaModelManager;
+import org.springframework.ai.ollama.management.PullModelStrategy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,36 +36,59 @@ import org.springframework.context.annotation.Bean;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
-@Disabled("For manual smoke testing only.")
-@Testcontainers
-class OllamaEmbeddingModelIT {
+class OllamaEmbeddingModelIT extends BaseOllamaIT {
 
-	private static final Log logger = LogFactory.getLog(OllamaApiIT.class);
+	private static final String MODEL = OllamaModel.NOMIC_EMBED_TEXT.getName();
 
-	@Container
-	static OllamaContainer ollamaContainer = new OllamaContainer("ollama/ollama:0.1.32");
-
-	static String baseUrl;
-
-	@BeforeAll
-	public static void beforeAll() throws IOException, InterruptedException {
-		logger.info("Start pulling the 'orca-mini' generative (3GB) ... would take several minutes ...");
-		ollamaContainer.execInContainer("ollama", "pull", "orca-mini");
-		logger.info("orca-mini pulling competed!");
-
-		baseUrl = "http://" + ollamaContainer.getHost() + ":" + ollamaContainer.getMappedPort(11434);
-	}
+	private static final String ADDITIONAL_MODEL = "all-minilm";
 
 	@Autowired
 	private OllamaEmbeddingModel embeddingModel;
 
+	@Autowired
+	private OllamaApi ollamaApi;
+
 	@Test
-	void singleEmbedding() {
-		assertThat(embeddingModel).isNotNull();
-		EmbeddingResponse embeddingResponse = embeddingModel.embedForResponse(List.of("Hello World"));
-		assertThat(embeddingResponse.getResults()).hasSize(1);
+	void embeddings() {
+		assertThat(this.embeddingModel).isNotNull();
+		EmbeddingResponse embeddingResponse = this.embeddingModel.call(new EmbeddingRequest(
+				List.of("Hello World", "Something else"), OllamaOptions.builder().truncate(false).build()));
+		assertThat(embeddingResponse.getResults()).hasSize(2);
+		assertThat(embeddingResponse.getResults().get(0).getIndex()).isEqualTo(0);
 		assertThat(embeddingResponse.getResults().get(0).getOutput()).isNotEmpty();
-		assertThat(embeddingModel.dimensions()).isEqualTo(3200);
+		assertThat(embeddingResponse.getResults().get(1).getIndex()).isEqualTo(1);
+		assertThat(embeddingResponse.getResults().get(1).getOutput()).isNotEmpty();
+		assertThat(embeddingResponse.getMetadata().getModel()).isEqualTo(MODEL);
+		assertThat(embeddingResponse.getMetadata().getUsage().getPromptTokens()).isEqualTo(4);
+		assertThat(embeddingResponse.getMetadata().getUsage().getTotalTokens()).isEqualTo(4);
+
+		assertThat(this.embeddingModel.dimensions()).isEqualTo(768);
+	}
+
+	@Test
+	void autoPullModelAtStartupTime() {
+		var model = "all-minilm";
+		assertThat(this.embeddingModel).isNotNull();
+
+		var modelManager = new OllamaModelManager(this.ollamaApi);
+		assertThat(modelManager.isModelAvailable(ADDITIONAL_MODEL)).isTrue();
+
+		EmbeddingResponse embeddingResponse = this.embeddingModel
+			.call(new EmbeddingRequest(List.of("Hello World", "Something else"),
+					OllamaOptions.builder().model(model).truncate(false).build()));
+
+		assertThat(embeddingResponse.getResults()).hasSize(2);
+		assertThat(embeddingResponse.getResults().get(0).getIndex()).isEqualTo(0);
+		assertThat(embeddingResponse.getResults().get(0).getOutput()).isNotEmpty();
+		assertThat(embeddingResponse.getResults().get(1).getIndex()).isEqualTo(1);
+		assertThat(embeddingResponse.getResults().get(1).getOutput()).isNotEmpty();
+		assertThat(embeddingResponse.getMetadata().getModel()).contains(ADDITIONAL_MODEL);
+		assertThat(embeddingResponse.getMetadata().getUsage().getPromptTokens()).isEqualTo(4);
+		assertThat(embeddingResponse.getMetadata().getUsage().getTotalTokens()).isEqualTo(4);
+
+		assertThat(this.embeddingModel.dimensions()).isEqualTo(768);
+
+		modelManager.deleteModel(ADDITIONAL_MODEL);
 	}
 
 	@SpringBootConfiguration
@@ -75,12 +96,19 @@ class OllamaEmbeddingModelIT {
 
 		@Bean
 		public OllamaApi ollamaApi() {
-			return new OllamaApi(baseUrl);
+			return initializeOllama(MODEL);
 		}
 
 		@Bean
 		public OllamaEmbeddingModel ollamaEmbedding(OllamaApi ollamaApi) {
-			return new OllamaEmbeddingModel(ollamaApi).withModel("orca-mini");
+			return OllamaEmbeddingModel.builder()
+				.ollamaApi(ollamaApi)
+				.defaultOptions(OllamaOptions.builder().model(MODEL).build())
+				.modelManagementOptions(ModelManagementOptions.builder()
+					.pullModelStrategy(PullModelStrategy.WHEN_MISSING)
+					.additionalModels(List.of(ADDITIONAL_MODEL))
+					.build())
+				.build();
 		}
 
 	}

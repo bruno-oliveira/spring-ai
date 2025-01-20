@@ -54,7 +54,7 @@ TIP: Refer to the xref:getting-started.adoc#dependency-management[Dependency Man
 
 The prefix `spring.ai.retry` is used as the property prefix that lets you configure the retry mechanism for the MiniMax chat model.
 
-[cols="3,5,1"]
+[cols="3,5,1", stripes=even]
 |====
 | Property | Description | Default
 
@@ -71,7 +71,7 @@ The prefix `spring.ai.retry` is used as the property prefix that lets you config
 
 The prefix `spring.ai.minimax` is used as the property prefix that lets you connect to MiniMax.
 
-[cols="3,5,1"]
+[cols="3,5,1", stripes=even]
 |====
 | Property | Description | Default
 
@@ -83,14 +83,14 @@ The prefix `spring.ai.minimax` is used as the property prefix that lets you conn
 
 The prefix `spring.ai.minimax.chat` is the property prefix that lets you configure the chat model implementation for MiniMax.
 
-[cols="3,5,1"]
+[cols="3,5,1", stripes=even]
 |====
 | Property | Description | Default
 
 | spring.ai.minimax.chat.enabled | Enable MiniMax chat model.  | true
 | spring.ai.minimax.chat.base-url | Optional overrides the spring.ai.minimax.base-url to provide chat specific url |  https://api.minimax.chat
 | spring.ai.minimax.chat.api-key | Optional overrides the spring.ai.minimax.api-key to provide chat specific api-key |  -
-| spring.ai.minimax.chat.options.model | This is the MiniMax Chat model to use | `abab5.5-chat` (the `abab5.5s-chat`, `abab5.5-chat`, and `abab6-chat` point to the latest model versions)
+| spring.ai.minimax.chat.options.model | This is the MiniMax Chat model to use | `abab6.5g-chat` (the `abab5.5-chat`, `abab5.5s-chat`, `abab6.5-chat`, `abab6.5g-chat`, `abab6.5t-chat` and `abab6.5s-chat` point to the latest model versions)
 | spring.ai.minimax.chat.options.maxTokens | The maximum number of tokens to generate in the chat completion. The total length of input tokens and generated tokens is limited by the model's context length. | -
 | spring.ai.minimax.chat.options.temperature | The sampling temperature to use that controls the apparent creativity of generated completions. Higher values will make output more random while lower values will make results more focused and deterministic. It is not recommended to modify temperature and top_p for the same completions request as the interaction of these two settings is difficult to predict. | 0.7
 | spring.ai.minimax.chat.options.topP | An alternative to sampling with temperature, called nucleus sampling, where the model considers the results of the tokens with top_p probability mass. So 0.1 means only the tokens comprising the top 10% probability mass are considered. We generally recommend altering this or temperature but not both. | 1.0
@@ -121,8 +121,8 @@ ChatResponse response = chatModel.call(
     new Prompt(
         "Generate the names of 5 famous pirates.",
         MiniMaxChatOptions.builder()
-            .withModel(MiniMaxApi.ChatModel.GLM_3_Turbo.getValue())
-            .withTemperature(0.5f)
+            .model(MiniMaxApi.ChatModel.ABAB_6_5_S_Chat.getValue())
+            .temperature(0.5)
         .build()
     ));
 ----
@@ -138,7 +138,7 @@ Add a `application.properties` file, under the `src/main/resources` directory, t
 [source,application.properties]
 ----
 spring.ai.minimax.api-key=YOUR_API_KEY
-spring.ai.minimax.chat.options.model=glm-3-turbo
+spring.ai.minimax.chat.options.model=abab6.5g-chat
 spring.ai.minimax.chat.options.temperature=0.7
 ----
 
@@ -161,13 +161,13 @@ public class ChatController {
 
     @GetMapping("/ai/generate")
     public Map generate(@RequestParam(value = "message", defaultValue = "Tell me a joke") String message) {
-        return Map.of("generation", chatModel.call(message));
+        return Map.of("generation", this.chatModel.call(message));
     }
 
     @GetMapping("/ai/generateStream")
 	public Flux<ChatResponse> generateStream(@RequestParam(value = "message", defaultValue = "Tell me a joke") String message) {
         var prompt = new Prompt(new UserMessage(message));
-        return chatModel.stream(prompt);
+        return this.chatModel.stream(prompt);
     }
 }
 ----
@@ -203,17 +203,17 @@ Next, create a `MiniMaxChatModel` and use it for text generations:
 ----
 var miniMaxApi = new MiniMaxApi(System.getenv("MINIMAX_API_KEY"));
 
-var chatModel = new MiniMaxChatModel(miniMaxApi, MiniMaxChatOptions.builder()
-                .withModel(MiniMaxApi.ChatModel.GLM_3_Turbo.getValue())
-                .withTemperature(0.4f)
-                .withMaxTokens(200)
+var chatModel = new MiniMaxChatModel(this.miniMaxApi, MiniMaxChatOptions.builder()
+                .model(MiniMaxApi.ChatModel.ABAB_6_5_S_Chat.getValue())
+                .temperature(0.4)
+                .maxTokens(200)
                 .build());
 
-ChatResponse response = chatModel.call(
+ChatResponse response = this.chatModel.call(
     new Prompt("Generate the names of 5 famous pirates."));
 
 // Or with streaming responses
-Flux<ChatResponse> streamResponse = chatModel.stream(
+Flux<ChatResponse> streamResponse = this.chatModel.stream(
     new Prompt("Generate the names of 5 famous pirates."));
 ----
 
@@ -235,17 +235,48 @@ ChatCompletionMessage chatCompletionMessage =
     new ChatCompletionMessage("Hello world", Role.USER);
 
 // Sync request
-ResponseEntity<ChatCompletion> response = miniMaxApi.chatCompletionEntity(
-    new ChatCompletionRequest(List.of(chatCompletionMessage), MiniMaxApi.ChatModel.GLM_3_Turbo.getValue(), 0.7f, false));
+ResponseEntity<ChatCompletion> response = this.miniMaxApi.chatCompletionEntity(
+    new ChatCompletionRequest(List.of(this.chatCompletionMessage), MiniMaxApi.ChatModel.ABAB_6_5_S_Chat.getValue(), 0.7f, false));
 
 // Streaming request
-Flux<ChatCompletionChunk> streamResponse = miniMaxApi.chatCompletionStream(
-        new ChatCompletionRequest(List.of(chatCompletionMessage), MiniMaxApi.ChatModel.GLM_3_Turbo.getValue(), 0.7f, true));
+Flux<ChatCompletionChunk> streamResponse = this.miniMaxApi.chatCompletionStream(
+        new ChatCompletionRequest(List.of(this.chatCompletionMessage), MiniMaxApi.ChatModel.ABAB_6_5_S_Chat.getValue(), 0.7f, true));
 ----
 
 Follow the https://github.com/spring-projects/spring-ai/blob/main/models/spring-ai-minimax/src/main/java/org/springframework/ai/minimax/api/MiniMaxApi.java[MiniMaxApi.java]'s JavaDoc for further information.
 
+
+=== WebSearch chat [[web-search]]
+
+The MiniMax model supported the web search feature. The web search feature allows you to search the web for information and return the results in the chat response.
+
+About web search follow the https://platform.minimaxi.com/document/ChatCompletion%20v2[MiniMax ChatCompletion] for further information.
+
+Here is a simple snippet how to use the web search:
+
+[source,java]
+----
+UserMessage userMessage = new UserMessage(
+        "How many gold medals has the United States won in total at the 2024 Olympics?");
+
+List<Message> messages = new ArrayList<>(List.of(this.userMessage));
+
+List<MiniMaxApi.FunctionTool> functionTool = List.of(MiniMaxApi.FunctionTool.webSearchFunctionTool());
+
+MiniMaxChatOptions options = MiniMaxChatOptions.builder()
+    .model(MiniMaxApi.ChatModel.ABAB_6_5_S_Chat.value)
+    .tools(this.functionTool)
+    .build();
+
+
+// Sync request
+ChatResponse response = chatModel.call(new Prompt(this.messages, this.options));
+
+// Streaming request
+Flux<ChatResponse> streamResponse = chatModel.stream(new Prompt(this.messages, this.options));
+----
+
 ==== MiniMaxApi Samples
 * The link:https://github.com/spring-projects/spring-ai/blob/main/models/spring-ai-minimax/src/test/java/org/springframework/ai/minimax/api/MiniMaxApiIT.java[MiniMaxApiIT.java] test provides some general examples how to use the lightweight library.
 
-* The link:https://github.com/spring-projects/spring-ai/blob/main/models/spring-ai-minimax/src/test/java/org/springframework/ai/minimax/api/MiniMaxApiToolFunctionCallIT.java.java[MiniMaxApiToolFunctionCallIT.java] test shows how to use the low-level API to call tool functions.
+* The link:https://github.com/spring-projects/spring-ai/blob/main/models/spring-ai-minimax/src/test/java/org/springframework/ai/minimax/api/MiniMaxApiToolFunctionCallIT.java[MiniMaxApiToolFunctionCallIT.java] test shows how to use the low-level API to call tool functions.>

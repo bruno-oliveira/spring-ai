@@ -66,7 +66,6 @@ A simple configuration can either be provided via Spring Boot's _application.pro
 [source,properties]
 ----
 # Chroma Vector Store connection properties
-spring.ai.vectorstore.chroma.client.initialize-schema=<true or false>
 spring.ai.vectorstore.chroma.client.host=<your Chroma instance host>
 spring.ai.vectorstore.chroma.client.port=<your Chroma instance port>
 spring.ai.vectorstore.chroma.client.key-token=<your access token (if configure)>
@@ -74,7 +73,8 @@ spring.ai.vectorstore.chroma.client.username=<your username (if configure)>
 spring.ai.vectorstore.chroma.client.password=<your password (if configure)>
 
 # Chroma Vector Store collection properties
-spring.ai.vectorstore.chroma.store.collection-name=<your collection name>
+spring.ai.vectorstore.chroma.initialize-schema=<true or false>
+spring.ai.vectorstore.chroma.collection-name=<your collection name>
 
 # Chroma Vector Store configuration properties
 
@@ -98,25 +98,27 @@ List <Document> documents = List.of(
     new Document("You walk forward facing the past and you turn back toward the future.", Map.of("meta2", "meta2")));
 
 // Add the documents
-vectorStore.add(List.of(document));
+vectorStore.add(documents);
 
 // Retrieve documents similar to a query
-List<Document> results = vectorStore.similaritySearch(SearchRequest.query("Spring").withTopK(5));
+List<Document> results = this.vectorStore.similaritySearch(SearchRequest.builder().query("Spring").topK(5).build());
 ----
 
 === Configuration properties
 
 You can use the following properties in your Spring Boot configuration to customize the vector store.
 
+[stripes=even]
 |===
 |Property| Description | Default value
 
-|`spring.ai.vectorstore.chroma.client.host`| Server connection host | `http://localhost`
+|`spring.ai.vectorstore.chroma.client.host`| Server connection host | http://localhost[http://localhost]
 |`spring.ai.vectorstore.chroma.client.port`| Server connection port | `8000`
 |`spring.ai.vectorstore.chroma.client.key-token`| Access token (if configured) | -
 |`spring.ai.vectorstore.chroma.client.username`| Access username (if configured) | -
 |`spring.ai.vectorstore.chroma.client.password`| Access password (if configured) | -
-|`spring.ai.vectorstore.chroma.store.collection-name`| Collection name | `SpringAiCollection`
+|`spring.ai.vectorstore.chroma.collection-name`| Collection name | `SpringAiCollection`
+|`spring.ai.vectorstore.chroma.initialize-schema`| Whether to initialize the required schema  | `false`
 |===
 
 [NOTE]
@@ -135,11 +137,11 @@ For example, you can use either the text expression language:
 [source,java]
 ----
 vectorStore.similaritySearch(
-                    SearchRequest.defaults()
-                            .withQuery("The World")
-                            .withTopK(TOP_K)
-                            .withSimilarityThreshold(SIMILARITY_THRESHOLD)
-                            .withFilterExpression("author in ['john', 'jill'] && article_type == 'blog'"));
+                    SearchRequest.builder()
+                            .query("The World")
+                            .topK(TOP_K)
+                            .similarityThreshold(SIMILARITY_THRESHOLD)
+                            .filterExpression("author in ['john', 'jill'] && article_type == 'blog'").build());
 ----
 
 or programmatically using the `Filter.Expression` DSL:
@@ -148,13 +150,13 @@ or programmatically using the `Filter.Expression` DSL:
 ----
 FilterExpressionBuilder b = new FilterExpressionBuilder();
 
-vectorStore.similaritySearch(SearchRequest.defaults()
-                    .withQuery("The World")
-                    .withTopK(TOP_K)
-                    .withSimilarityThreshold(SIMILARITY_THRESHOLD)
-                    .withFilterExpression(b.and(
+vectorStore.similaritySearch(SearchRequest.builder()
+                    .query("The World")
+                    .topK(TOP_K)
+                    .similarityThreshold(SIMILARITY_THRESHOLD)
+                    .filterExpression(b.and(
                             b.in("john", "jill"),
-                            b.eq("article_type", "blog")).build()));
+                            b.eq("article_type", "blog")).build()).build());
 ----
 
 NOTE: Those (portable) filter expressions get automatically converted into the proprietary Chroma `where` link:https://docs.trychroma.com/usage-guide#using-where-filters[filter expressions].
@@ -205,19 +207,20 @@ TIP: Refer to the xref:getting-started.adoc#dependency-management[Dependency Man
 
 === Sample Code
 
-Create a `RestTemplate` instance with proper ChromaDB authorization configurations and Use it to create a `ChromaApi` instance:
+Create a `RestClient.Builder` instance with proper ChromaDB authorization configurations and Use it to create a `ChromaApi` instance:
 
 [source,java]
 ----
 @Bean
-public RestTemplate restTemplate() {
-   return new RestTemplate();
+public RestClient.Builder builder() {
+    return RestClient.builder().requestFactory(new SimpleClientHttpRequestFactory());
 }
 
+
 @Bean
-public ChromaApi chromaApi(RestTemplate restTemplate) {
+public ChromaApi chromaApi(RestClient.Builder restClientBuilder) {
    String chromaUrl = "http://localhost:8000";
-   ChromaApi chromaApi = new ChromaApi(chromaUrl, restTemplate);
+   ChromaApi chromaApi = new ChromaApi(chromaUrl, restClientBuilder);
    return chromaApi;
 }
 ----
@@ -228,7 +231,10 @@ Integrate with OpenAI's embeddings by adding the Spring Boot OpenAI starter to y
 ----
 @Bean
 public VectorStore chromaVectorStore(EmbeddingModel embeddingModel, ChromaApi chromaApi) {
- return new ChromaVectorStore(embeddingModel, chromaApi, "TestCollection");
+ return ChromaVectorStore.builder(chromaApi, embeddingModel)
+    .collectionName("TestCollection")
+    .initializeSchema(true)
+    .build();
 }
 ----
 
@@ -262,8 +268,7 @@ If all goes well, you should retrieve the document containing the text "Spring A
 === Run Chroma Locally
 
 ```shell
-docker run -it --rm --name chroma -p 8000:8000 ghcr.io/chroma-core/chroma:0.4.15
+docker run -it --rm --name chroma -p 8000:8000 ghcr.io/chroma-core/chroma:0.5.20
 ```
 
 Starts a chroma store at <http://localhost:8000/api/v1>
-
